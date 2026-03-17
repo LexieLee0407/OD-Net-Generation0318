@@ -7,11 +7,11 @@ dataset:
   split_mode: "county"
   heldout_counties: ["061"]
   val_counties: ["047"]
-  num_train_samples: 16
-  num_val_samples: 4
-  num_test_samples: 4
+  num_train_samples: 32
+  num_val_samples: 8
+  num_test_samples: 8
   max_node_overlap: 0.3
-  batch_size: 1
+  batch_size: 4
 
 model:
   gps_layers: 4
@@ -34,11 +34,11 @@ train:
   weight_decay: 0.0001
   epochs:
     gravity: 1
-    pair_mlp: 1
-    regressor: 1
-    ae: 1
-    diffusion: 1
-  device: "cpu"
+    pair_mlp: 10
+    regressor: 10
+    ae: 10
+    diffusion: 10
+  device: "auto"
   seed: 20260317
 
 eval:
@@ -47,4 +47,4 @@ eval:
   distance_bins: [0.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0]
   figures_dir: "od_zero_shot/artifacts/figures"
   metrics_path: "od_zero_shot/artifacts/metrics/metrics.json"
-  device: "cpu"
+  device: "auto"

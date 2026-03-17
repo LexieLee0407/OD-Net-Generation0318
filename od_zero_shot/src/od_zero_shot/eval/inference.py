@@ -28,6 +28,7 @@ def _load_eval_samples(manifest_path: str | None, split: str, fixture_name: str 
                 ordering=dataset_cfg.ordering,
                 lap_pe_dim=model_cfg.lap_pe_dim,
                 rw_steps=model_cfg.rw_steps,
+                neighbor_metric=dataset_cfg.neighbor_metric,
             ).to_numpy_dict()
         ]
     if manifest_path is None:
@@ -42,13 +43,25 @@ def _resolve_metrics_path(base_path: str, model_kind: str, split: str) -> Path:
     return path
 
 
-def evaluate_model(dataset_cfg, model_cfg, eval_cfg, model_kind: str, checkpoint: str, manifest_path: str | None, split: str, fixture_name: str | None, regressor_checkpoint: str | None = None, ae_checkpoint: str | None = None) -> dict[str, object]:
+def evaluate_model(
+    dataset_cfg,
+    model_cfg,
+    eval_cfg,
+    model_kind: str,
+    checkpoint: str,
+    manifest_path: str | None,
+    split: str,
+    fixture_name: str | None,
+    regressor_checkpoint: str | None = None,
+    ae_checkpoint: str | None = None,
+    config_path: str | None = None,
+) -> dict[str, object]:
     normalized_kind = "conditional_diffusion" if model_kind == "diffusion" else model_kind
     samples = _load_eval_samples(manifest_path=manifest_path, split=split, fixture_name=fixture_name, dataset_cfg=dataset_cfg, model_cfg=model_cfg)
     figures_dir = Path(eval_cfg.figures_dir) / split / normalized_kind
     figures_dir.mkdir(parents=True, exist_ok=True)
     metrics_collection = []
-    device = choose_device("cpu")
+    device = choose_device(eval_cfg.device)
 
     gravity = None
     pair_mlp = None
@@ -141,6 +154,18 @@ def evaluate_model(dataset_cfg, model_cfg, eval_cfg, model_kind: str, checkpoint
         "metrics": metrics_collection,
         "aggregate": aggregate,
         "figures_dir": str(figures_dir),
+        "metrics_path": str(metrics_path),
+        "provenance": {
+            "config_path": config_path,
+            "checkpoint_path": str(checkpoint),
+            "manifest_path": manifest_path,
+            "split": split,
+            "model_kind": normalized_kind,
+            "figures_dir": str(figures_dir),
+            "regressor_checkpoint": regressor_checkpoint,
+            "ae_checkpoint": ae_checkpoint,
+            "device": device,
+        },
     }
     save_json(metrics_path, output)
     return output

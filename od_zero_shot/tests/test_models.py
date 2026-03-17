@@ -45,7 +45,7 @@ class CanonicalModelShapeTest(unittest.TestCase):
         cls.batch = {key: value.unsqueeze(0) if torch.is_tensor(value) else value for key, value in cls.sample.items()}
 
     def test_graphgps_forward_shape(self) -> None:
-        model = GraphGPSRegressor()
+        model = GraphGPSRegressor(lap_pe_dim=8)
         output = model(self.batch)
         self.assertEqual(tuple(output["y_pred"].shape), (1, 100, 100))
         self.assertEqual(tuple(output["pair_condition_map"].shape), (1, 64, 100, 100))
@@ -57,13 +57,14 @@ class CanonicalModelShapeTest(unittest.TestCase):
         self.assertEqual(tuple(output["latent"].shape), (1, 16, 25, 25))
 
     def test_diffusion_shape(self) -> None:
-        regressor = GraphGPSRegressor()
+        regressor = GraphGPSRegressor(lap_pe_dim=8)
         pair_condition = regressor(self.batch)["pair_condition_map"]
         autoencoder = ODAutoencoder(latent_channels=16)
         latent = autoencoder.encode(self.batch["y_od"])
         diffusion = ConditionalLatentDiffusion(latent_channels=16, pair_dim=64, diffusion_steps=10, conditional=True)
         output = diffusion.training_loss(clean_latent=latent, pair_condition=pair_condition)
         self.assertEqual(tuple(output["pred_noise"].shape), tuple(latent.shape))
+        self.assertEqual(tuple(output["timesteps"].shape), (1,))
 
 
 if __name__ == "__main__":

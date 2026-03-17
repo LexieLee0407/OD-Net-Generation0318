@@ -17,15 +17,18 @@ def _safe_metric(func, *args, **kwargs) -> float:
         return float("nan")
 
 
-def binary_edge_metrics(y_true_log: np.ndarray, y_pred_log: np.ndarray, threshold: float) -> dict[str, float]:
-    true_edge = (np.expm1(y_true_log) > 0.0).astype(np.int32).reshape(-1)
-    pred_flow = np.expm1(y_pred_log).reshape(-1)
-    pred_score = y_pred_log.reshape(-1)
+def binary_edge_metrics(y_true_log: np.ndarray, y_pred_log: np.ndarray, threshold: float, mask: np.ndarray | None = None, prefix: str = "") -> dict[str, float]:
+    if mask is None:
+        mask = np.ones_like(y_true_log, dtype=bool)
+    true_edge = (np.expm1(y_true_log)[mask] > 0.0).astype(np.int32).reshape(-1)
+    pred_flow = np.expm1(y_pred_log)[mask].reshape(-1)
+    pred_score = y_pred_log[mask].reshape(-1)
     pred_edge = (pred_flow > threshold).astype(np.int32)
+    metric_prefix = f"{prefix}_" if prefix else ""
     return {
-        "auroc": _safe_metric(roc_auc_score, true_edge, pred_score),
-        "auprc": _safe_metric(average_precision_score, true_edge, pred_score),
-        "f1_at_tau": _safe_metric(f1_score, true_edge, pred_edge, zero_division=0),
+        f"{metric_prefix}auroc": _safe_metric(roc_auc_score, true_edge, pred_score),
+        f"{metric_prefix}auprc": _safe_metric(average_precision_score, true_edge, pred_score),
+        f"{metric_prefix}f1_at_tau": _safe_metric(f1_score, true_edge, pred_edge, zero_division=0),
     }
 
 
@@ -72,9 +75,12 @@ def top_k_recall(y_true_log: np.ndarray, y_pred_log: np.ndarray, top_k: int) -> 
     np.fill_diagonal(pred_flow, -np.inf)
     recalls = []
     for origin in range(true_flow.shape[0]):
-        true_idx = np.argsort(true_flow[origin])[-top_k:]
+        positive_idx = np.where(true_flow[origin] > 0.0)[0]
+        if positive_idx.size == 0:
+            continue
+        true_idx = positive_idx[np.argsort(true_flow[origin, positive_idx])[-min(top_k, positive_idx.size) :]]
         pred_idx = np.argsort(pred_flow[origin])[-top_k:]
-        true_set = set(int(idx) for idx in true_idx if np.isfinite(true_flow[origin, idx]))
+        true_set = set(int(idx) for idx in true_idx if np.isfinite(true_flow[origin, idx]) and true_flow[origin, idx] > 0.0)
         pred_set = set(int(idx) for idx in pred_idx if np.isfinite(pred_flow[origin, idx]))
         if true_set:
             recalls.append(len(true_set & pred_set) / len(true_set))
@@ -84,6 +90,8 @@ def top_k_recall(y_true_log: np.ndarray, y_pred_log: np.ndarray, top_k: int) -> 
 def degree_distribution_error(y_true_log: np.ndarray, y_pred_log: np.ndarray, threshold: float) -> dict[str, float]:
     true_adj = (np.expm1(y_true_log) > 0.0).astype(np.int32)
     pred_adj = (np.expm1(y_pred_log) > threshold).astype(np.int32)
+    np.fill_diagonal(true_adj, 0)
+    np.fill_diagonal(pred_adj, 0)
     return {
         "out_degree_distribution_error": float(np.mean(np.abs(np.sort(true_adj.sum(axis=1)) - np.sort(pred_adj.sum(axis=1))))),
         "in_degree_distribution_error": float(np.mean(np.abs(np.sort(true_adj.sum(axis=0)) - np.sort(pred_adj.sum(axis=0))))),
@@ -128,9 +136,13 @@ def compute_all_metrics(sample: dict[str, Any], pred_log: np.ndarray, threshold:
     y_true = sample["y_od"]
     metrics: dict[str, Any] = {}
     metrics.update(binary_edge_metrics(y_true, pred_log, threshold))
+    off_diag_mask = ~np.asarray(sample["mask_diag"]).astype(bool)
+    metrics.update(binary_edge_metrics(y_true, pred_log, threshold, mask=off_diag_mask, prefix="offdiag"))
     metrics.update(grouped_regression_metrics(y_true, pred_log, sample["mask_diag"], sample["mask_pos_off"], sample["mask_zero_off"]))
     metrics.update(flow_conservation_metrics(y_true, pred_log))
     metrics["top_k_recall"] = top_k_recall(y_true, pred_log, top_k=top_k)
+    for k in (1, 3, 5, 10):
+        metrics[f"top_k_recall_at_{k}"] = top_k_recall(y_true, pred_log, top_k=k)
     metrics.update(degree_distribution_error(y_true, pred_log, threshold))
     metrics.update(distance_decay_metrics(y_true, pred_log, sample["distance_matrix"], bins=distance_bins))
     return metrics

@@ -34,6 +34,9 @@ data/ny_state/
 python3 -m od_zero_shot.cli <subcommand> --config od_zero_shot/configs/default.yaml
 ```
 
+- `od_zero_shot/configs/default.yaml`：smoke 配置，默认 `batch_size=1`、各 stage `epochs=1`
+- `od_zero_shot/configs/baseline.yaml`：baseline 配置，适合更长训练与 `batch_size>=4`
+
 主链是：
 
 ```text
@@ -115,6 +118,8 @@ python3 -m od_zero_shot.cli evaluate_infer --config od_zero_shot/configs/default
 - checkpoints：`od_zero_shot/artifacts/checkpoints/`
 - metrics：`od_zero_shot/artifacts/metrics/`
 - figures：`od_zero_shot/artifacts/figures/`
+
+`dataset_summary.json` 会记录 sanitize 摘要、split 样本数、县代码划分、`ordering/knn_k/lap_pe_dim/rw_steps/neighbor_metric`、seed 尝试次数，以及样本重叠统计。
 
 ## 说明
 

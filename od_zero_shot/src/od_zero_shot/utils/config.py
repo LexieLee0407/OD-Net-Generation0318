@@ -25,6 +25,7 @@ class DatasetConfig:
     num_train_samples: int = 32
     num_val_samples: int = 8
     num_test_samples: int = 8
+    max_node_overlap: float = 0.3
     batch_size: int = 4
 
 
@@ -76,6 +77,7 @@ class EvalConfig:
     distance_bins: list[float] = field(default_factory=lambda: [0.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0])
     figures_dir: str = "od_zero_shot/artifacts/figures"
     metrics_path: str = "od_zero_shot/artifacts/metrics/metrics.json"
+    device: str = "auto"
 
 
 @dataclass

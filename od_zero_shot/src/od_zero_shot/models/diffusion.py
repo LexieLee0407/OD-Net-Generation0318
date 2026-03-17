@@ -105,11 +105,18 @@ class GaussianDiffusion(nn.Module):
         sqrt_one_minus_alpha_bar = self.sqrt_one_minus_alpha_bars[timesteps].view(-1, 1, 1, 1)
         return sqrt_alpha_bar * x_start + sqrt_one_minus_alpha_bar * noise, noise
 
-    def training_loss(self, denoiser: nn.Module, x_start: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+    def training_step(self, denoiser: nn.Module, x_start: torch.Tensor, cond: torch.Tensor) -> dict[str, torch.Tensor]:
         timesteps = self.sample_timesteps(x_start.shape[0], x_start.device)
         x_t, noise = self.q_sample(x_start, timesteps)
         pred_noise = denoiser(x_t, timesteps, cond)
-        return F.mse_loss(pred_noise, noise)
+        loss = F.mse_loss(pred_noise, noise)
+        return {
+            "timesteps": timesteps,
+            "noisy_latent": x_t,
+            "target_noise": noise,
+            "pred_noise": pred_noise,
+            "loss": loss,
+        }
 
     def sample(self, denoiser: nn.Module, shape: tuple[int, ...], cond: torch.Tensor, device: torch.device) -> torch.Tensor:
         current = torch.randn(shape, device=device)
@@ -145,11 +152,7 @@ class ConditionalLatentDiffusion(nn.Module):
             )
         if pair_condition.shape[-2:] != clean_latent.shape[-2:]:
             pair_condition = F.interpolate(pair_condition, size=clean_latent.shape[-2:], mode="bilinear", align_corners=False)
-        loss = self.diffusion.training_loss(self.denoiser, clean_latent, pair_condition)
-        timesteps = self.diffusion.sample_timesteps(clean_latent.shape[0], clean_latent.device)
-        noisy, _ = self.diffusion.q_sample(clean_latent, timesteps)
-        pred_noise = self.denoiser(noisy, timesteps, pair_condition)
-        return {"loss": loss, "pred_noise": pred_noise}
+        return self.diffusion.training_step(self.denoiser, clean_latent, pair_condition)
 
     def sample(self, num_samples: int, device: str | torch.device, pair_condition: torch.Tensor | None = None) -> torch.Tensor:
         device_obj = torch.device(device)

@@ -85,27 +85,46 @@ def handle_build_samples(args) -> None:
     built_root = Path(config.dataset.built_root)
     if args.fixture is not None:
         raw_data = load_fixture(args.fixture)
-        if args.fixture == "five_node":
-            sample = build_single_fixture_sample(raw_data, split="train", knn_k=min(config.dataset.knn_k, 4))
-            sample_path = built_root / "train" / "train_fixture.npz"
-            save_sample(sample, sample_path)
-            save_json(built_root / "manifest.json", {"train": [str(sample_path)], "val": [], "test": []})
-            print({"manifest": str(built_root / "manifest.json")})
-            return
-        manifest = build_and_save_split_samples(
-            raw_data=raw_data,
-            built_root=config.dataset.built_root,
-            sample_size=config.dataset.sample_size,
-            knn_k=config.dataset.knn_k,
-            heldout_counties=config.dataset.heldout_counties,
-            val_counties=config.dataset.val_counties,
-            num_train_samples=config.dataset.num_train_samples,
-            num_val_samples=config.dataset.num_val_samples,
-            num_test_samples=config.dataset.num_test_samples,
+        fixture_split = args.split
+        fixture_knn_k = min(config.dataset.knn_k, max(1, len(raw_data.node_ids) - 1))
+        sample = build_single_fixture_sample(
+            raw_data,
+            split=fixture_split,
+            knn_k=fixture_knn_k,
             ordering=config.dataset.ordering,
             lap_pe_dim=config.model.lap_pe_dim,
             rw_steps=config.model.rw_steps,
-            split_mode=config.dataset.split_mode,
+            neighbor_metric=config.dataset.neighbor_metric,
+        )
+        sample_path = built_root / fixture_split / f"{fixture_split}_{args.fixture}.npz"
+        save_sample(sample, sample_path)
+        manifest = {"train": [], "val": [], "test": []}
+        manifest[fixture_split] = [str(sample_path)]
+        save_json(built_root / "manifest.json", manifest)
+        save_json(
+            built_root / "dataset_summary.json",
+            {
+                "sanitize_report": None,
+                "split_counts": {key: len(value) for key, value in manifest.items()},
+                "split_counties": {
+                    "train": sorted(set(sample.counties)) if fixture_split == "train" else [],
+                    "val": sorted(set(sample.counties)) if fixture_split == "val" else [],
+                    "test": sorted(set(sample.counties)) if fixture_split == "test" else [],
+                },
+                "sample_size": int(sample.y_od.shape[0]),
+                "knn_k": fixture_knn_k,
+                "ordering": config.dataset.ordering,
+                "lap_pe_dim": config.model.lap_pe_dim,
+                "rw_steps": config.model.rw_steps,
+                "neighbor_metric": config.dataset.neighbor_metric,
+                "split_mode": "fixture",
+                "max_node_overlap": config.dataset.max_node_overlap,
+                "num_attempted_seeds": {fixture_split: 1},
+                "num_skipped_for_small_pool": {fixture_split: 0},
+                "num_skipped_for_overlap": {fixture_split: 0},
+                "mean_sample_overlap": {fixture_split: 0.0},
+                "std_sample_overlap": {fixture_split: 0.0},
+            },
         )
         print(manifest)
         return
@@ -124,6 +143,8 @@ def handle_build_samples(args) -> None:
         lap_pe_dim=config.model.lap_pe_dim,
         rw_steps=config.model.rw_steps,
         split_mode=config.dataset.split_mode,
+        neighbor_metric=config.dataset.neighbor_metric,
+        max_node_overlap=config.dataset.max_node_overlap,
     )
     print(manifest)
 
@@ -214,8 +235,9 @@ def handle_evaluate(args) -> None:
         fixture_name=args.fixture,
         regressor_checkpoint=args.regressor_checkpoint,
         ae_checkpoint=args.ae_checkpoint,
+        config_path=args.config,
     )
-    print({"num_samples": len(result["metrics"]), "metrics_path": config.eval.metrics_path})
+    print({"num_samples": len(result["metrics"]), "metrics_path": result["metrics_path"]})
 
 
 def main() -> None:

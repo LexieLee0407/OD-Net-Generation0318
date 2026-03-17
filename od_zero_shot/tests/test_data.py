@@ -15,7 +15,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from od_zero_shot.data.fixtures import generate_synthetic_toy100, load_five_node_fixture
 from od_zero_shot.data.raw import sanitize_raw_data
-from od_zero_shot.data.sample_builder import build_single_fixture_sample, split_seed_ids_by_county
+from od_zero_shot.data.sample_builder import build_sample_from_seed, build_single_fixture_sample, split_seed_ids_by_county
 
 
 class CanonicalDataPipelineTest(unittest.TestCase):
@@ -45,6 +45,24 @@ class CanonicalDataPipelineTest(unittest.TestCase):
         self.assertTrue(all(node_id[2:5] == "061" for node_id in split["test"]))
         self.assertTrue(all(node_id[2:5] == "047" for node_id in split["val"]))
         self.assertTrue(all(node_id[2:5] not in {"061", "047"} for node_id in split["train"]))
+
+    def test_build_sample_from_seed_rejects_small_candidate_pool(self) -> None:
+        raw = generate_synthetic_toy100()
+        split = split_seed_ids_by_county(raw, heldout_counties=["061"], val_counties=["047"])
+        with self.assertRaises(ValueError):
+            build_sample_from_seed(
+                raw,
+                seed_id=split["train"][0],
+                sample_size=100,
+                knn_k=8,
+                split="train",
+                sample_id="train_0000",
+                candidate_node_ids=split["train"],
+                ordering="xy",
+                lap_pe_dim=8,
+                rw_steps=2,
+                neighbor_metric="haversine",
+            )
 
     def test_cli_check_data_with_fixture(self) -> None:
         result = subprocess.run(

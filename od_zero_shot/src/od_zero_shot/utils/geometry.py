@@ -50,16 +50,12 @@ def build_knn_graph(distance_matrix: np.ndarray, k: int) -> tuple[np.ndarray, np
     if k >= num_nodes:
         raise ValueError(f"k={k} 必须严格小于节点数 {num_nodes}")
     adjacency = np.zeros((num_nodes, num_nodes), dtype=bool)
-    directed_edges: list[tuple[int, int]] = []
     for node_idx in range(num_nodes):
         nearest = np.argsort(distance_matrix[node_idx])[1 : k + 1]
         adjacency[node_idx, nearest] = True
-        for neighbor_idx in nearest.tolist():
-            directed_edges.append((node_idx, neighbor_idx))
-            directed_edges.append((neighbor_idx, node_idx))
     adjacency = np.logical_or(adjacency, adjacency.T)
     np.fill_diagonal(adjacency, False)
-    edge_index = np.asarray(directed_edges, dtype=np.int64).T
+    edge_index = np.vstack(np.nonzero(adjacency)).astype(np.int64)
     return edge_index, adjacency
 
 

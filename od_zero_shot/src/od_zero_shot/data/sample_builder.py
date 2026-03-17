@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from statistics import mean, pstdev
 from typing import Iterable
 
 import numpy as np
@@ -22,7 +23,6 @@ from od_zero_shot.utils.geometry import (
     normalize_coords,
     order_indices_xy,
     rw_diagonal_feature,
-    stable_sample,
 )
 
 
@@ -147,7 +147,7 @@ def _make_sample(
     coords_norm = normalize_coords(coords).astype(np.float32)
     x_node = np.concatenate([coords_norm, log1p_safe(population).reshape(-1, 1)], axis=1).astype(np.float32)
     distance_matrix = haversine_matrix(coords).astype(np.float32)
-    dx_matrix, dy_matrix = coordinate_delta_matrices(coords)
+    dx_matrix, dy_matrix = coordinate_delta_matrices(coords_norm)
     effective_k = min(knn_k, max(1, len(node_ids) - 1))
     edge_index, adjacency_geo = build_knn_graph(distance_matrix, k=effective_k)
     edge_attr = np.stack(
@@ -193,8 +193,18 @@ def _make_sample(
         "rw_steps": rw_steps,
         "sample_size": len(node_ids),
         "neighbor_metric": neighbor_metric,
+        "coordinate_delta_space": "normalized_xy",
         "counties": sorted(set(counties)),
     }
+    if y_od.shape != (len(node_ids), len(node_ids)):
+        raise ValueError(f"样本 {sample_id} 的 y_od 形状非法: {tuple(y_od.shape)}")
+    if lap_pe.shape[1] != lap_pe_dim:
+        raise ValueError(f"样本 {sample_id} 的 lap_pe 维度非法: {lap_pe.shape[1]} != {lap_pe_dim}")
+    if not np.array_equal(adjacency_geo, adjacency_geo.T):
+        raise ValueError(f"样本 {sample_id} 的 adjacency_geo 不是对称图。")
+    edge_pairs = list(zip(edge_index[0].tolist(), edge_index[1].tolist()))
+    if len(edge_pairs) != len(set(edge_pairs)):
+        raise ValueError(f"样本 {sample_id} 的 edge_index 存在重复边。")
     return GraphSample(
         sample_id=sample_id,
         split=split,
@@ -232,7 +242,7 @@ def build_single_fixture_sample(
     rw_steps: int = 2,
     neighbor_metric: str = "haversine",
 ) -> GraphSample:
-    return _make_sample(
+    sample = _make_sample(
         raw_data,
         raw_data.node_ids,
         sample_id=f"{split}_fixture",
@@ -244,6 +254,15 @@ def build_single_fixture_sample(
         seed_id="fixture",
         neighbor_metric=neighbor_metric,
     )
+    sample.metadata.update(
+        {
+            "candidate_pool_size": len(raw_data.node_ids),
+            "seed_rank": 0,
+            "split_counties": sorted({county_code_from_fips(node_id) for node_id in raw_data.node_ids}),
+            "node_overlap_ratio": 0.0,
+        }
+    )
+    return sample
 
 
 def split_seed_ids_by_county(raw_data: RawMobilityData, heldout_counties: Iterable[str], val_counties: Iterable[str]) -> dict[str, list[str]]:
@@ -273,14 +292,18 @@ def build_sample_from_seed(
     lap_pe_dim: int = 8,
     rw_steps: int = 2,
     neighbor_metric: str = "haversine",
+    seed_rank: int | None = None,
+    split_counties: list[str] | None = None,
 ) -> GraphSample:
     candidate_ids = raw_data.node_ids if candidate_node_ids is None else list(candidate_node_ids)
     if seed_id not in candidate_ids:
         raise ValueError(f"seed 节点 {seed_id} 不在 split={split} 的候选池中。")
+    if len(candidate_ids) < sample_size:
+        raise ValueError(f"split={split} 的候选池只有 {len(candidate_ids)} 个节点，达不到 sample_size={sample_size}")
     distances = _candidate_distances(raw_data, seed_id=seed_id, candidate_ids=candidate_ids, neighbor_metric=neighbor_metric)
-    order = np.argsort(distances)[: min(sample_size, len(candidate_ids))]
+    order = np.argsort(distances)[:sample_size]
     node_ids = [candidate_ids[idx] for idx in order.tolist()]
-    return _make_sample(
+    sample = _make_sample(
         raw_data,
         node_ids,
         sample_id=sample_id,
@@ -292,6 +315,58 @@ def build_sample_from_seed(
         seed_id=seed_id,
         neighbor_metric=neighbor_metric,
     )
+    sample.metadata.update(
+        {
+            "candidate_pool_size": len(candidate_ids),
+            "seed_rank": seed_rank,
+            "split_counties": split_counties or sorted({county_code_from_fips(node_id) for node_id in candidate_ids}),
+        }
+    )
+    return sample
+
+
+def _ordered_seed_ids(raw_data: RawMobilityData, seed_ids: list[str], ordering: str) -> list[str]:
+    if not seed_ids:
+        return []
+    coords = np.asarray([raw_data.centroids[node_id] for node_id in seed_ids], dtype=np.float32)
+    order = _order_indices(coords, ordering)
+    return [seed_ids[idx] for idx in order.tolist()]
+
+
+def _coverage_priority_indices(num_items: int, target_count: int) -> list[int]:
+    if num_items <= 0:
+        return []
+    if target_count <= 0 or target_count >= num_items:
+        return list(range(num_items))
+    anchor_indices = np.linspace(0, num_items - 1, num=target_count)
+    anchors: list[int] = []
+    used: set[int] = set()
+    for value in anchor_indices:
+        idx = int(round(float(value)))
+        idx = min(max(idx, 0), num_items - 1)
+        if idx not in used:
+            anchors.append(idx)
+            used.add(idx)
+    remaining = [idx for idx in range(num_items) if idx not in used]
+    return anchors + remaining
+
+
+def _sample_overlap_ratio(node_ids: list[str], existing_sets: list[set[str]]) -> float:
+    if not existing_sets:
+        return 0.0
+    current = set(node_ids)
+    return max(len(current & prior) / max(1, len(current)) for prior in existing_sets)
+
+
+def _overlap_stats(sample_node_sets: list[set[str]]) -> tuple[float, float]:
+    ratios: list[float] = []
+    for left in range(len(sample_node_sets)):
+        for right in range(left + 1, len(sample_node_sets)):
+            overlap = len(sample_node_sets[left] & sample_node_sets[right]) / max(1, len(sample_node_sets[left]))
+            ratios.append(overlap)
+    if not ratios:
+        return 0.0, 0.0
+    return float(mean(ratios)), float(pstdev(ratios) if len(ratios) > 1 else 0.0)
 
 
 def save_sample(sample: GraphSample, path: str | Path) -> None:
@@ -353,6 +428,7 @@ def build_and_save_split_samples(
     rw_steps: int = 2,
     split_mode: str = "county",
     neighbor_metric: str = "haversine",
+    max_node_overlap: float = 0.3,
 ) -> dict[str, list[str]]:
     if split_mode != "county":
         raise ValueError(f"当前仅实现 split_mode='county'，收到 {split_mode}")
@@ -361,6 +437,10 @@ def build_and_save_split_samples(
     split_seeds = split_seed_ids_by_county(sanitized_raw, heldout_counties=heldout_counties, val_counties=val_counties)
     quotas = {"train": num_train_samples, "val": num_val_samples, "test": num_test_samples}
     manifest: dict[str, list[str]] = {"train": [], "val": [], "test": []}
+    attempted_counts = {"train": 0, "val": 0, "test": 0}
+    small_pool_skips = {"train": 0, "val": 0, "test": 0}
+    overlap_skips = {"train": 0, "val": 0, "test": 0}
+    selected_node_sets: dict[str, list[set[str]]] = {"train": [], "val": [], "test": []}
     split_counties = {
         "train": sorted({county_code_from_fips(node_id) for node_id in split_seeds["train"]}),
         "val": sorted({county_code_from_fips(node_id) for node_id in split_seeds["val"]}),
@@ -368,24 +448,48 @@ def build_and_save_split_samples(
     }
     for split, seeds in split_seeds.items():
         split_dir = ensure_dir(built_root / split)
-        chosen_seeds = stable_sample(sorted(seeds), quotas[split])
-        for index, seed_id in enumerate(chosen_seeds):
-            sample = build_sample_from_seed(
-                sanitized_raw,
-                seed_id=seed_id,
-                sample_size=sample_size,
-                knn_k=knn_k,
-                split=split,
-                sample_id=f"{split}_{index:04d}",
-                candidate_node_ids=split_seeds[split],
-                ordering=ordering,
-                lap_pe_dim=lap_pe_dim,
-                rw_steps=rw_steps,
-                neighbor_metric=neighbor_metric,
-            )
+        ordered_seeds = _ordered_seed_ids(sanitized_raw, seeds, ordering=ordering)
+        for seed_rank in _coverage_priority_indices(len(ordered_seeds), quotas[split]):
+            if len(manifest[split]) >= quotas[split]:
+                break
+            seed_id = ordered_seeds[seed_rank]
+            attempted_counts[split] += 1
+            try:
+                sample = build_sample_from_seed(
+                    sanitized_raw,
+                    seed_id=seed_id,
+                    sample_size=sample_size,
+                    knn_k=knn_k,
+                    split=split,
+                    sample_id=f"{split}_{len(manifest[split]):04d}",
+                    candidate_node_ids=split_seeds[split],
+                    ordering=ordering,
+                    lap_pe_dim=lap_pe_dim,
+                    rw_steps=rw_steps,
+                    neighbor_metric=neighbor_metric,
+                    seed_rank=seed_rank,
+                    split_counties=split_counties[split],
+                )
+            except ValueError as exc:
+                if "候选池只有" in str(exc):
+                    small_pool_skips[split] += 1
+                    continue
+                raise
+            overlap_ratio = _sample_overlap_ratio(sample.node_ids, selected_node_sets[split])
+            if overlap_ratio > max_node_overlap:
+                overlap_skips[split] += 1
+                continue
+            sample.metadata["node_overlap_ratio"] = overlap_ratio
             path = split_dir / f"{sample.sample_id}.npz"
             save_sample(sample, path)
             manifest[split].append(str(path))
+            selected_node_sets[split].append(set(sample.node_ids))
+    mean_overlap = {}
+    std_overlap = {}
+    for split, node_sets in selected_node_sets.items():
+        split_mean, split_std = _overlap_stats(node_sets)
+        mean_overlap[split] = split_mean
+        std_overlap[split] = split_std
     save_json(built_root / "manifest.json", manifest)
     save_json(
         built_root / "dataset_summary.json",
@@ -400,6 +504,12 @@ def build_and_save_split_samples(
             "rw_steps": rw_steps,
             "neighbor_metric": neighbor_metric,
             "split_mode": split_mode,
+            "max_node_overlap": max_node_overlap,
+            "num_attempted_seeds": attempted_counts,
+            "num_skipped_for_small_pool": small_pool_skips,
+            "num_skipped_for_overlap": overlap_skips,
+            "mean_sample_overlap": mean_overlap,
+            "std_sample_overlap": std_overlap,
         },
     )
     return manifest
