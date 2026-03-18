@@ -1,0 +1,118 @@
+{
+  "sanitize_report": {
+    "num_raw_centroid_nodes": 4918,
+    "num_raw_population_nodes": 4918,
+    "num_intersection_nodes": 4918,
+    "num_dropped_nodes": 0,
+    "num_dropped_edges": 0,
+    "num_zero_population_nodes": 34
+  },
+  "split_counts": {
+    "train": 16,
+    "val": 4,
+    "test": 3
+  },
+  "split_counties": {
+    "train": [
+      "001",
+      "003",
+      "005",
+      "007",
+      "009",
+      "011",
+      "013",
+      "015",
+      "017",
+      "019",
+      "021",
+      "023",
+      "025",
+      "027",
+      "029",
+      "031",
+      "033",
+      "035",
+      "037",
+      "039",
+      "041",
+      "043",
+      "045",
+      "049",
+      "051",
+      "053",
+      "055",
+      "057",
+      "059",
+      "063",
+      "065",
+      "067",
+      "069",
+      "071",
+      "073",
+      "075",
+      "077",
+      "079",
+      "081",
+      "083",
+      "085",
+      "087",
+      "089",
+      "091",
+      "093",
+      "095",
+      "097",
+      "099",
+      "101",
+      "103",
+      "105",
+      "107",
+      "109",
+      "111",
+      "113",
+      "115",
+      "117",
+      "119",
+      "121",
+      "123"
+    ],
+    "val": [
+      "047"
+    ],
+    "test": [
+      "061"
+    ]
+  },
+  "sample_size": 100,
+  "knn_k": 8,
+  "ordering": "xy",
+  "lap_pe_dim": 8,
+  "rw_steps": 2,
+  "neighbor_metric": "haversine",
+  "split_mode": "county",
+  "max_node_overlap": 0.3,
+  "num_attempted_seeds": {
+    "train": 386,
+    "val": 4,
+    "test": 3
+  },
+  "num_skipped_for_small_pool": {
+    "train": 0,
+    "val": 0,
+    "test": 0
+  },
+  "num_skipped_for_overlap": {
+    "train": 370,
+    "val": 0,
+    "test": 0
+  },
+  "mean_sample_overlap": {
+    "train": 0.011583333333333333,
+    "val": 0.03333333333333333,
+    "test": 0.05
+  },
+  "std_sample_overlap": {
+    "train": 0.05029903632829913,
+    "val": 0.07453559924999299,
+    "test": 0.06377042156569664
+  }
+}

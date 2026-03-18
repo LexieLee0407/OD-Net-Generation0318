@@ -1,0 +1,31 @@
+{
+  "train": [
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0000.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0001.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0002.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0003.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0004.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0005.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0006.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0007.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0008.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0009.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0010.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0011.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0012.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0013.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0014.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/train/train_0015.npz"
+  ],
+  "val": [
+    "od_zero_shot/artifacts/smoke_run/datasets/val/val_0000.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/val/val_0001.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/val/val_0002.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/val/val_0003.npz"
+  ],
+  "test": [
+    "od_zero_shot/artifacts/smoke_run/datasets/test/test_0000.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/test/test_0001.npz",
+    "od_zero_shot/artifacts/smoke_run/datasets/test/test_0002.npz"
+  ]
+}

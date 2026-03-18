@@ -1,0 +1,3 @@
+od_zero_shot/data/ny_state/*.pkl
+**/__pycache__/
+**/.pytest_cache/
